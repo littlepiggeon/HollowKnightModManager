@@ -1,0 +1,11 @@
+[project]
+name = "hollowknightmodmanager"
+version = "0.1.0"
+description = "Add your description here"
+requires-python = ">=3.13"
+dependencies = [
+    "requests",
+    "click",
+    "python-dotenv",
+    "lxml"
+]
