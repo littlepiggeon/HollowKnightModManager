@@ -148,5 +148,26 @@ def uninstall(name):
         click.echo("Please provide a mod name to uninstall.")
 
 
+@cli.command("upgrade")
+@click.argument("name", required=True)
+def upgrade(name):
+    """Upgrade a mod."""
+    if name:
+        if time.time() - float(cp.get("index", "last_update")) > 86400:
+            click.echo("Updating mod index...")
+            update()
+        if not api.upgrade(name, Path(cp.get("game", "path"))):
+            click.echo(f"Mod {name} upgraded successfully.")
+        else:
+            click.echo(f"Failed to upgrade mod {name}.")
+    else:
+        click.echo("Please provide a mod name to upgrade.")
+
+
+@cli.command("installapi")
+def install_api():
+    api.install_api(Path(cp.get("game", "path")))
+
+
 if __name__ == '__main__':
     cli()

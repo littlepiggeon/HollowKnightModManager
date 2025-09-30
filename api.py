@@ -1,6 +1,7 @@
 import os.path
 from pathlib import Path
 from shutil import copy2, copytree
+from tempfile import TemporaryFile
 from urllib.parse import urlparse
 from zipfile import ZipFile
 
@@ -34,6 +35,21 @@ def download_file(url, local_filename) -> int:
         else:
             click.echo(f"Failed! {r.status_code} {r.reason}")
             return 1
+
+
+def polish_index(file: Path, table: dict[int, bytes], ):
+    with TemporaryFile('wb+', dir=Path.home() / ".hkmm") as tempfile:
+        with open(file, 'rb') as f:
+            lineno = 1
+            while c := f.readline():
+                if not (lineno in table):
+                    tempfile.write(c)
+                else:
+                    tempfile.write(table[lineno])
+                lineno += 1
+        tempfile.seek(0)
+        with open(file, 'wb') as f:
+            f.write(tempfile.read())
 
 
 def install(name: str, game_path: Path, is_dependency=False) -> int:
@@ -75,6 +91,35 @@ def install(name: str, game_path: Path, is_dependency=False) -> int:
 
     click.echo(f"mod \"{name}\" installed successfully.")
     return 0
+
+
+def install_api(game_path: Path) -> int:
+    """
+    Install the modding API.
+
+    :param game_path: The path to the game directory.
+    :return: 0 if the installation was successful, 1 if it failed.
+    """
+    click.echo("Installing Modding API...")
+    (Path.home() / ".hkmm" / "downloads").mkdir(parents=True, exist_ok=True)
+    if not download_file("https://github.com/hk-modding/modlinks/raw/refs/heads/main/ApiLinks.xml",
+                         (links := Path.home() / ".hkmm" / "ApiLinks.xml")):
+        polish_index(links, {2: b"<ApiLinks", 5: b'>'})
+        if not download_file((url := (tree := etree.parse(links)).find("Windows").text),
+                             (zip_path := Path.home() / ".hkmm" / "downloads" / os.path.basename(urlparse(url).path))):
+            for file in tree.findall("File"):
+                zip_f = ZipFile(zip_path, 'r')
+                with zip_f.open(file.text, 'r') as source:
+                    with open(game_path / "hollow_knight_Data" / "Managed" / file.text, 'wb') as target:
+                        target.write(source.read())
+            click.echo("Modding API installed successfully.")
+            return 0
+        else:
+            click.echo("Failed to download Modding API.")
+            return 1
+    else:
+        click.echo("Failed to download Modding API links.")
+        return 1
 
 
 def disable(name: str, game_path: Path) -> int:
@@ -158,7 +203,8 @@ def get_mod_index():
     Fetches the mod index from the official URL.
     """
     download_file("https://github.com/hk-modding/modlinks/raw/refs/heads/main/ModLinks.xml",
-                  Path.home() / ".hkmm" / "ModLinks.xml")
+                  (links := Path.home() / ".hkmm" / "ModLinks.xml"))
+    polish_index(links, {2: b"<ModLinks", 5: b'>'})
 
 
 def get_mod_list(game_path: Path) -> list[str]:
@@ -171,3 +217,18 @@ def get_disabled_mod_list(game_path: Path) -> list[str]:
     """Get list of all mods located"""
     moddir = game_path / "hollow_knight_Data" / "Managed" / "Mods" / "Disabled"
     return [i for i in os.listdir(moddir) if (moddir / i).is_dir()]
+
+
+def upgrade(name: str, game_path: Path) -> int:
+    """
+    Upgrade a mod by name.
+
+    :param name: The name of the mod to upgrade.
+    :param game_path: The path to the game directory.
+    :return: 0 if the upgrade was successful, 1 if the mod was not found.
+    """
+    if uninstall(name, game_path):
+        return 1
+    if install(name, game_path):
+        return 1
+    return 0
